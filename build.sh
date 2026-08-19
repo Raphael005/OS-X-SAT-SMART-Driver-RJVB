@@ -1,8 +1,8 @@
 #!/bin/sh
 umask 022
 set -e
-make clean all CONFIGURATION=Release
-make clean all CONFIGURATION=Debug
-make clean all CONFIGURATION=Debug SDK=macosx10.5
+cd "$(dirname "$0")"
+make clean all CONFIGURATION=Release ARCHS=x86_64
+make clean all CONFIGURATION=Debug ARCHS=x86_64
 make clean
 
