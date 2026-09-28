@@ -88,3 +88,66 @@ Compile
  * If you want to limit the driver for certain hardware add product 
    and vendor identification to SATSMARTDriver/Info.plist.
    Check chapter "Adding enclosure identification"
+
+
+Troubleshooting
+===============
+
+SMART Query returns "kIOReturnUnsupported"
+------------------------------------------
+
+This error occurs when the driver cannot communicate with the device
+using SAT (SCSI-ATA Translation) protocol. Common causes:
+
+1. Apple Silicon Internal NVMe (disk0)
+   Apple's internal NVMe drives use a proprietary controller
+   (AppleANS3CGv2Controller) that does not support SAT protocol.
+   This driver CANNOT support Apple Silicon internal drives.
+   
+   Alternative tools for Apple NVMe health monitoring:
+   * Install smartmontools: brew install smartmontools
+   * Query health: sudo smartctl -a /dev/disk0
+   * Basic status: system_profiler SPNVMeDataType
+
+2. Third-Party Driver Conflict (e.g., Samsung Magician)
+   Some manufacturers install their own kernel extensions that
+   intercept SMART queries. The SAT driver cannot take over while
+   these are loaded.
+   
+   To resolve:
+   * Unmount the affected drive: diskutil unmountDisk diskN
+   * Unload the conflicting driver:
+     sudo kextunload -b com.samsung.magicianpssd.driver
+   * Re-run ./smart_status to verify
+   
+   For permanent resolution, uninstall the manufacturer's software
+   (e.g., Samsung Magician) or remove its kexts from /Library/Extensions/
+
+3. Virtual Devices (Disk Images, SD Cards)
+   Disk images and SD cards do not support SMART.
+   The smart_status tool now reports "N/A" for these devices.
+
+4. Unsupported USB/FireWire Enclosure
+   Not all enclosures support SAT passthrough. Check:
+   http://smartmontools.org/wiki/Supported_USB-Devices
+   
+   Look for "sat" or "jmicron" in the Option column.
+
+
+Checking Loaded Kernel Extensions
+---------------------------------
+
+To see which storage-related kexts are loaded:
+  kextstat | grep -iE '(samsung|smart|sat)'
+
+To check system logs for driver messages:
+  log show --predicate 'eventMessage contains "SMART"' --last 5m
+
+
+Compiling smart_status on Modern macOS
+--------------------------------------
+
+On macOS 12+ (Monterey and later), use:
+  gcc -D__ASSERT_MACROS_DEFINE_VERSIONS_WITHOUT_UNDERSCORES=1 \
+      -framework CoreFoundation -framework IOKit \
+      -o smart_status SATSMARTDriver/TestTools/smart_status.c

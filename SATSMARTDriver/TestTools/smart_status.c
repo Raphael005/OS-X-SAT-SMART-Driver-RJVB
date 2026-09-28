@@ -1,5 +1,6 @@
 /*
  * Modified by Jarkko Sonninen 2012
+ * Enhanced for Apple Silicon NVMe detection 2026
  */
 
 /*
@@ -45,6 +46,7 @@
  */
 
 #include <CoreFoundation/CoreFoundation.h>
+#include <string.h>
 #include <IOKit/IOKitLib.h>
 #include <IOKit/IOCFPlugIn.h>
 #include <IOKit/IOMessage.h>
@@ -165,6 +167,41 @@ static char * GetStatusForDevice(UInt8 status )
     return msg;
 }
 
+// Check if controller class indicates Apple Silicon NVMe (proprietary, not SAT-compatible)
+static int IsAppleNVMeController(const char *className) {
+    if (className == NULL) return 0;
+    // Apple Silicon NVMe controllers use AppleANS* class names
+    if (strncmp(className, "AppleANS", 8) == 0) return 1;
+    // Also check for generic Apple NVMe controller patterns
+    if (strstr(className, "AppleNVMe") != NULL) return 1;
+    return 0;
+}
+
+// Check if this is a disk image (virtual device)
+static int IsDiskImage(const char *className) {
+    if (className == NULL) return 0;
+    if (strstr(className, "DiskImage") != NULL) return 1;
+    if (strstr(className, "HDIX") != NULL) return 1;
+    return 0;
+}
+
+// Check if this is an SD card reader
+static int IsSDCardReader(const char *className) {
+    if (className == NULL) return 0;
+    if (strstr(className, "SD Card") != NULL) return 1;
+    if (strstr(className, "SDCard") != NULL) return 1;
+    return 0;
+}
+
+// Check if third-party driver is handling this device
+static int IsThirdPartyDriver(const char *className) {
+    if (className == NULL) return 0;
+    // Samsung Magician driver
+    if (strstr(className, "samsung") != NULL) return 1;
+    if (strstr(className, "Samsung") != NULL) return 1;
+    return 0;
+}
+
 static CFStringRef BSDNameForBlockStorageDevice( io_registry_entry_t service )
 {
     // This should be an IOBlockStorageDevice. It'll have one child, an IOBlockStorageDriver,
@@ -241,6 +278,55 @@ static void CheckSMARTStatus( io_service_t service, uint64_t id, const char *mod
     io_name_t devName;
     IORegistryEntryGetName(parent, devName);
     printf("Class           : %s\n", devName);
+    
+    // Check for unsupported device types and provide helpful messages
+    if (IsAppleNVMeController(devName)) {
+        bsdName = BSDNameForBlockStorageDevice( service );
+        if (bsdName) {
+            const char *bsdStr = CFStringGetCStringPtr(bsdName, kCFStringEncodingMacRoman);
+            if (bsdStr) printf("Device File     : %s\n", bsdStr);
+            CFRelease( bsdName );
+        }
+        printf("SMART Query     : N/A (Apple Silicon NVMe)\n");
+        printf("Note            : Use 'smartctl -a /dev/diskN' or 'system_profiler SPNVMeDataType'\n");
+        printf("\n");
+        IOObjectRelease(parent);
+        return;
+    }
+    
+    if (IsDiskImage(devName)) {
+        bsdName = BSDNameForBlockStorageDevice( service );
+        if (bsdName) {
+            const char *bsdStr = CFStringGetCStringPtr(bsdName, kCFStringEncodingMacRoman);
+            if (bsdStr) printf("Device File     : %s\n", bsdStr);
+            CFRelease( bsdName );
+        }
+        printf("SMART Query     : N/A (Disk Image - virtual device)\n");
+        printf("\n");
+        IOObjectRelease(parent);
+        return;
+    }
+    
+    if (IsSDCardReader(devName)) {
+        printf("SMART Query     : N/A (SD Card - no SMART support)\n");
+        printf("\n");
+        IOObjectRelease(parent);
+        return;
+    }
+    
+    if (IsThirdPartyDriver(devName)) {
+        bsdName = BSDNameForBlockStorageDevice( service );
+        if (bsdName) {
+            const char *bsdStr = CFStringGetCStringPtr(bsdName, kCFStringEncodingMacRoman);
+            if (bsdStr) printf("Device File     : %s\n", bsdStr);
+            CFRelease( bsdName );
+        }
+        printf("SMART Query     : BLOCKED (third-party driver active)\n");
+        printf("Note            : Unload conflicting driver with: sudo kextunload -b <bundle-id>\n");
+        printf("\n");
+        IOObjectRelease(parent);
+        return;
+    }
     
     // We're only interested in the parent object if it's our driver class.
     if (mode && IOObjectConformsTo(parent, "fi_dungeon_driver_IOSATDriver")) {
@@ -423,10 +509,13 @@ int main (int argc, const char * argv[])
     //CFDictionaryAddValue( match, CFSTR("SMART Capable"), kCFBooleanTrue );
     
     io_iterator_t iterator = MACH_PORT_NULL;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     if (IOServiceGetMatchingServices (  kIOMasterPortDefault,
                                           IOServiceMatching ( kIOATABlockStorageDeviceClass ),
                                       &iterator )!= kIOReturnSuccess )
         return ( EX_OSERR );
+#pragma clang diagnostic pop
     
     //if ( IOServiceGetMatchingServices(kIOMasterPortDefault, match, &iterator) != kIOReturnSuccess )
     //    return ( EX_OSERR );
