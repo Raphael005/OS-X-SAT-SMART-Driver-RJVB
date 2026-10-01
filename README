@@ -38,8 +38,6 @@ Uninstall
 =========
 
  * Remove driver and plugin
-    sudo rm -r /System/Library/Extensions/SATSMARTDriver.kext
-    sudo rm -r /System/Library/Extensions/SATSMARTLib.plugin
     sudo rm -r /Library/Extensions/SATSMARTDriver.kext
     sudo rm -r /Library/Extensions/SATSMARTLib.plugin
  * Reboot
@@ -117,7 +115,7 @@ using SAT (SCSI-ATA Translation) protocol. Common causes:
    To resolve:
    * Unmount the affected drive: diskutil unmountDisk diskN
    * Unload the conflicting driver:
-     sudo kextunload -b com.samsung.magicianpssd.driver
+     sudo kmutil unload -b com.samsung.magicianpssd.driver
    * Re-run ./smart_status to verify
    
    For permanent resolution, uninstall the manufacturer's software
@@ -138,16 +136,28 @@ Checking Loaded Kernel Extensions
 ---------------------------------
 
 To see which storage-related kexts are loaded:
-  kextstat | grep -iE '(samsung|smart|sat)'
+  kmutil showloaded | grep -iE '(samsung|smart|sat)'
 
 To check system logs for driver messages:
   log show --predicate 'eventMessage contains "SMART"' --last 5m
 
 
-Compiling smart_status on Modern macOS
---------------------------------------
+Building on Modern macOS
+------------------------
 
-On macOS 12+ (Monterey and later), use:
-  gcc -D__ASSERT_MACROS_DEFINE_VERSIONS_WITHOUT_UNDERSCORES=1 \
-      -framework CoreFoundation -framework IOKit \
-      -o smart_status SATSMARTDriver/TestTools/smart_status.c
+The Xcode project builds with current Xcode for macOS 12 and later:
+
+  make clean build pkg CONFIGURATION=Release
+
+This produces a universal package. The kext is built for arm64e (the
+kernel ABI on Apple Silicon; plain arm64 kexts do not load) and x86_64,
+the plugin and tools for arm64 and x86_64. Everything installs to
+/Library/Extensions and /usr/local/bin; /System is read-only since
+macOS 10.15 and is never touched.
+
+Loading a third-party kext on macOS 11 and later needs, once:
+ * on Apple Silicon, "Reduced Security" with "Allow user management of
+   kernel extensions from identified developers" set in recoveryOS
+   Startup Security Utility;
+ * approval in System Settings > Privacy & Security after installing;
+ * a restart.

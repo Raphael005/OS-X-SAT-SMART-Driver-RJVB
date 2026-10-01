@@ -16,7 +16,7 @@ build:
 	(cd SATSMARTDriver; xcodebuild -configuration $(CONFIGURATION) -project SATSMARTDriver.xcodeproj)
 
 version:
-	$(eval VERSION := $(shell cat SATSMARTDriver/build/$(CONFIGURATION)/SATSMARTDriver.kext/Contents/Info.plist | xpath "//string[preceding-sibling::key[1]='CFBundleVersion']/text()"))
+	$(eval VERSION := $(shell /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' SATSMARTDriver/build/$(CONFIGURATION)/SATSMARTDriver.kext/Contents/Info.plist))
 	echo VERSION $(VERSION)
 	$(eval PKG := $(TITLE)-$(VERSION)-$(CONFIGURATION).pkg)
 	echo PKG $(PKG)
@@ -30,9 +30,8 @@ pkg: version
 	(cd SATSMARTDriver; xcodebuild -configuration $(CONFIGURATION) -project SATSMARTDriver.xcodeproj install DSTROOT=../Root)
 	rm -f Root/usr/local/bin/smart_sample
 	rm -f Root/usr/local/bin/set_properties
-	mv Root/System/Library/Extensions/SATSMARTLib.plugin Root/Library/Extensions/
-	pkgbuild --root Root  --component-plist SATSMARTDriver.plist --scripts Resources --identifier fi.dungeon.SATSMARTDriver SATSMARTDriver.pkg
-	productbuild --distribution ./Distribution.xml --package-path . $(PKG)
+	pkgbuild --root Root  --component-plist SATSMARTDriver.plist --scripts PackageScripts --identifier fi.dungeon.SATSMARTDriver SATSMARTDriver.pkg
+	productbuild --distribution ./Distribution.xml --resources Resources --package-path . $(PKG)
 	#/Developer/Applications/Utilities/PackageMaker.app/Contents/MacOS/PackageMaker --doc SATSMARTDriver.pmdoc --out $(PKG)
 
 dmg: version
@@ -43,31 +42,28 @@ unmount:
 	ioreg -r -c IOSCSIPeripheralDeviceType00 -l | grep "BSD Name" | cut -d'"' -f4 | while read a; do diskutil unmountDisk "$$a" || exit 1; done
 
 unload: unmount
-	-sudo kextunload -v -b fi.dungeon.driver.SATSMARTDriver
-	-sudo kextunload -v -b org.dungeon.driver.SATSMARTDriver
+	-sudo kmutil unload -b fi.dungeon.driver.SATSMARTDriver
+	-sudo kmutil unload -b org.dungeon.driver.SATSMARTDriver
 
-realinstall: unload
+# Since macOS 11 third-party kexts load only from /Library/Extensions, so
+# install and realinstall are the same; the first load needs user approval
+# in System Settings > Privacy & Security and a restart.
+install realinstall: unload
+	sudo rm -rf $(KEXTDIR)/SATSMARTDriver.kext $(KEXTDIR)/SATSMARTLib.plugin
 	sudo cp -R SATSMARTDriver/build/$(CONFIGURATION)/SATSMARTDriver.kext $(KEXTDIR)
 	sudo cp -R SATSMARTDriver/build/$(CONFIGURATION)/SATSMARTLib.plugin $(KEXTDIR)
+	sudo chown -R root:wheel $(KEXTDIR)/SATSMARTDriver.kext $(KEXTDIR)/SATSMARTLib.plugin
 	sync
-	sudo kextutil -t $(KEXTDIR)/SATSMARTDriver.kext
-
-install: unload
-	sudo rm -rf /tmp/SATSMARTDriver.kext
-	sudo cp -R SATSMARTDriver/build/$(CONFIGURATION)/SATSMARTDriver.kext /tmp
-	sudo cp -R SATSMARTDriver/build/$(CONFIGURATION)/SATSMARTLib.plugin $(KEXTDIR)
-	sync
-	sudo kextutil -t /tmp/SATSMARTDriver.kext
+	sudo kmutil load -p $(KEXTDIR)/SATSMARTDriver.kext
 
 uninstall: unload
 	sudo rm -rf $(KEXTDIR)/SATSMARTDriver.kext
 	sudo rm -rf $(KEXTDIR)/SATSMARTLib.plugin
-	sudo rm -rf /tmp/SATSMARTDriver.kext
 
 clean:
 	rm -rf SATSMARTDriver/build
 	rm -rf Root
-	rm -fr SATSMARTDriver-*pkg
+	rm -f SATSMARTDriver.pkg SATSMARTDriver-*-Release.pkg SATSMARTDriver-*-Debug.pkg
 
 bump-version:
-	cd SATSMARTDriver; /Developer/usr/bin/agvtool new-version -all 0.11
+	cd SATSMARTDriver; xcrun agvtool new-version -all 0.11
