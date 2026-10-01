@@ -161,3 +161,23 @@ Loading a third-party kext on macOS 11 and later needs, once:
    Startup Security Utility;
  * approval in System Settings > Privacy & Security after installing;
  * a restart.
+
+
+Signing and Notarization
+------------------------
+
+Unsigned builds work only with kext signature checks relaxed. For a
+package that installs without Gatekeeper warnings, pass Developer ID
+identities:
+
+  make clean build pkg notarize CONFIGURATION=Release \
+      SIGN_APP="Developer ID Application: Name (TEAMID)" \
+      SIGN_INSTALLER="Developer ID Installer: Name (TEAMID)"
+
+Notarization uses the Apple developer account signed into Xcode
+(Settings > Accounts); no notarytool profile or app-specific password
+is needed. notarize-pkg.sh uploads the package inside a disposable app
+archive, waits for Apple, then staples the ticket to the package.
+For the kext to load, the Developer ID Application certificate must
+also carry Apple's kext signing extension, which Apple grants on
+request: https://developer.apple.com/contact/kext/

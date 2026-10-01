@@ -11,6 +11,15 @@ ifneq ($(SDK),macosx10.6)
 endif
 KEXTDIR=/Library/Extensions
 
+# Optional signing; empty values give an unsigned (ad hoc) build.
+#   SIGN_APP        "Developer ID Application: Name (TEAMID)" for kext, plugin, tools
+#   SIGN_INSTALLER  "Developer ID Installer: Name (TEAMID)" for the package
+# `make notarize` uses the Apple account signed into Xcode (see notarize-pkg.sh).
+# A kext only loads if SIGN_APP's certificate also carries Apple's kext
+# signing extension, which Apple grants on request.
+SIGN_APP=
+SIGN_INSTALLER=
+
 build:
 	rm -rf SATSMARTDriver/build
 	(cd SATSMARTDriver; xcodebuild -configuration $(CONFIGURATION) -project SATSMARTDriver.xcodeproj)
@@ -30,9 +39,18 @@ pkg: version
 	(cd SATSMARTDriver; xcodebuild -configuration $(CONFIGURATION) -project SATSMARTDriver.xcodeproj install DSTROOT=../Root)
 	rm -f Root/usr/local/bin/smart_sample
 	rm -f Root/usr/local/bin/set_properties
+ifneq ($(SIGN_APP),)
+	codesign --force --timestamp --options runtime --sign "$(SIGN_APP)" Root/usr/local/bin/*
+	codesign --force --timestamp --options runtime --sign "$(SIGN_APP)" Root/Library/Extensions/SATSMARTLib.plugin
+	codesign --force --timestamp --options runtime --sign "$(SIGN_APP)" Root/Library/Extensions/SATSMARTDriver.kext
+endif
 	pkgbuild --root Root  --component-plist SATSMARTDriver.plist --scripts PackageScripts --identifier fi.dungeon.SATSMARTDriver SATSMARTDriver.pkg
-	productbuild --distribution ./Distribution.xml --resources Resources --package-path . $(PKG)
+	productbuild --distribution ./Distribution.xml --resources Resources --package-path . $(if $(SIGN_INSTALLER),--sign "$(SIGN_INSTALLER)" --timestamp) $(PKG)
 	#/Developer/Applications/Utilities/PackageMaker.app/Contents/MacOS/PackageMaker --doc SATSMARTDriver.pmdoc --out $(PKG)
+
+notarize: version
+	test -n "$(SIGN_APP)" || { echo "set SIGN_APP"; exit 1; }
+	./notarize-pkg.sh $(PKG) "$(SIGN_APP)" Root/usr/local/bin/smart_status
 
 dmg: version
 	echo VERSION $(VERSION)$(VERSIONPOSTFIX)
