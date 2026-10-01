@@ -1,0 +1,11 @@
+#!/bin/sh
+# Unload any running copy (old org.dungeon and current fi.dungeon identifiers).
+# kmutil replaces kextunload on macOS 11+; failures are expected when not loaded.
+for id in org.dungeon.driver.SATSMARTDriver fi.dungeon.driver.SATSMARTDriver; do
+    if [ -x /usr/bin/kmutil ]; then
+        kmutil unload -b "$id" 2>/dev/null
+    else
+        kextunload -v -b "$id" 2>/dev/null
+    fi
+done
+exit 0
