@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="1">
   <title>SATSMARTDriver</title>
-<welcome file="Resources/Welcome.txt"/>
+    <welcome file="Welcome.txt"/>
+    <allowed-os-versions>
+        <os-version min="12.0"/>
+    </allowed-os-versions>
     <pkg-ref id="fi.dungeon.SATSMARTDriver"/>
-    <options customize="never" require-scripts="false"/>
+    <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>
     <choices-outline>
         <line choice="default">
             <line choice="fi.dungeon.SATSMARTDriver"/>

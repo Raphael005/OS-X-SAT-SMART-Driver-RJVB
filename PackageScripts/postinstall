@@ -1,0 +1,15 @@
+#!/bin/sh
+KEXTDIR=/Library/Extensions
+chmod -R go-w $KEXTDIR/SATSMARTDriver.kext
+chown -R root:wheel $KEXTDIR/SATSMARTDriver.kext
+chmod -R go-w $KEXTDIR/SATSMARTLib.plugin
+chown -R root:wheel $KEXTDIR/SATSMARTLib.plugin
+# On macOS 11+ this registers the kext with the auxiliary kernel collection.
+# The first time, macOS asks for approval in System Settings > Privacy & Security
+# and a restart; on Apple Silicon "Reduced Security" must be enabled in recoveryOS.
+if [ -x /usr/bin/kmutil ]; then
+    kmutil load -p $KEXTDIR/SATSMARTDriver.kext
+else
+    kextutil $KEXTDIR/SATSMARTDriver.kext
+fi
+exit 0
